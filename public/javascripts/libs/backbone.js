@@ -4,38 +4,41 @@
 //     For all details and documentation:
 //     http://documentcloud.github.com/backbone
 
-// Use a factory function to attach Backbone properties to an exports value.
-// Code at the end of this file creates the right define, require and exports
-// values to allow Backbone to run in a CommonJS or AMD container or in the
-// default browser environment.
-(function(root, define){ define('backbone', function(require, exports) {
+(function(){
 
   // Initial Setup
   // -------------
+
+  // Save a reference to the global object.
+  var root = this;
 
   // Save the previous value of the `Backbone` variable.
   var previousBackbone = root.Backbone;
 
   // The top-level namespace. All public Backbone classes and modules will
-  // be attached to this.
-  var Backbone = exports;
+  // be attached to this. Exported for both CommonJS and the browser.
+  var Backbone;
+  if (typeof exports !== 'undefined') {
+    Backbone = exports;
+  } else {
+    Backbone = root.Backbone = {};
+  }
 
   // Current version of the library. Keep in sync with `package.json`.
   Backbone.VERSION = '0.5.3';
 
-  // Require Underscore.
-  var _ = require('underscore');
+  // Require Underscore, if we're on the server, and it's not already present.
+  var _ = root._;
+  if (!_ && (typeof require !== 'undefined')) _ = require('underscore')._;
 
-  // The DOM/Ajax library used internally by Backbone. It can be set to any
-  // library that supports the portions of the jQuery API used by Backbone.
-  // In the browser, by default Backbone looks for a global jQuery, Zepto or Ender.
-  var $ = require('jquery');
+  // For Backbone's purposes, jQuery or Zepto owns the `$` variable.
+  var $ = root.jQuery || root.Zepto;
 
   // Runs Backbone.js in *noConflict* mode, returning the `Backbone` variable
   // to its previous owner. Returns a reference to this Backbone object.
   Backbone.noConflict = function() {
     root.Backbone = previousBackbone;
-    return exports;
+    return this;
   };
 
   // Turn on `emulateHTTP` to support legacy HTTP servers. Setting this option will
@@ -146,6 +149,10 @@
   // Attach all inheritable methods to the Model prototype.
   _.extend(Backbone.Model.prototype, Backbone.Events, {
 
+    // A snapshot of the model's previous attributes, taken immediately
+    // after the last `"change"` event was fired.
+    _previousAttributes : null,
+
     // Has the item been changed since the last `"change"` event?
     _changed : false,
 
@@ -229,9 +236,6 @@
       var validObj = {};
       validObj[attr] = void 0;
       if (!options.silent && this.validate && !this._performValidation(validObj, options)) return false;
-
-      // changedAttributes needs to know if an attribute has been unset.
-      (this._unsetAttributes || (this._unsetAttributes = [])).push(attr);
 
       // Remove the attribute.
       delete this.attributes[attr];
@@ -346,7 +350,6 @@
     change : function(options) {
       this.trigger('change', this, options);
       this._previousAttributes = _.clone(this.attributes);
-      this._unsetAttributes = null;
       this._changed = false;
     },
 
@@ -360,25 +363,17 @@
     // Return an object containing all the attributes that have changed, or false
     // if there are no changed attributes. Useful for determining what parts of a
     // view need to be updated and/or what attributes need to be persisted to
-    // the server. Unset attributes will be set to undefined.
+    // the server.
     changedAttributes : function(now) {
       now || (now = this.attributes);
-      var old = this._previousAttributes, unset = this._unsetAttributes;
-
+      var old = this._previousAttributes;
       var changed = false;
       for (var attr in now) {
         if (!_.isEqual(old[attr], now[attr])) {
-          changed || (changed = {});
+          changed = changed || {};
           changed[attr] = now[attr];
         }
       }
-
-      if (unset) {
-        changed || (changed = {});
-        var len = unset.length;
-        while (len--) changed[unset[len]] = void 0;
-      }
-
       return changed;
     },
 
@@ -573,7 +568,7 @@
       if (!(model instanceof Backbone.Model)) {
         var attrs = model;
         model = new this.model(attrs, {collection: this});
-        if (model.validate && !model._performValidation(model.attributes, options)) model = false;
+        if (model.validate && !model._performValidation(attrs, options)) model = false;
       } else if (!model.collection) {
         model.collection = this;
       }
@@ -597,7 +592,6 @@
       this.models.splice(index, 0, model);
       model.bind('all', this._onModelEvent);
       this.length++;
-      options.index = index;
       if (!options.silent) model.trigger('add', model, this, options);
       return model;
     },
@@ -610,10 +604,8 @@
       if (!model) return null;
       delete this._byId[model.id];
       delete this._byCid[model.cid];
-      var index = this.indexOf(model);
-      this.models.splice(index, 1);
+      this.models.splice(this.indexOf(model), 1);
       this.length--;
-      options.index = index;
       if (!options.silent) model.trigger('remove', model, this, options);
       this._removeReference(model);
       return model;
@@ -769,13 +761,12 @@
           fragment = window.location.pathname;
           var search = window.location.search;
           if (search) fragment += search;
+          if (fragment.indexOf(this.options.root) == 0) fragment = fragment.substr(this.options.root.length);
         } else {
           fragment = window.location.hash;
         }
       }
-      fragment = decodeURIComponent(fragment.replace(hashStrip, ''));
-      if (!fragment.indexOf(this.options.root)) fragment = fragment.substr(this.options.root.length);
-      return fragment;
+      return decodeURIComponent(fragment.replace(hashStrip, ''));
     },
 
     // Start the hash change handling, returning `true` if the current URL matches
@@ -945,7 +936,7 @@
       return el;
     },
 
-    // Set callbacks, where `this.events` is a hash of
+    // Set callbacks, where `this.callbacks` is a hash of
     //
     // *{"event selector": "callback"}*
     //
@@ -962,7 +953,7 @@
     delegateEvents : function(events) {
       if (!(events || (events = this.events))) return;
       if (_.isFunction(events)) events = events.call(this);
-      this.undelegateEvents();
+      $(this.el).unbind('.delegateEvents' + this.cid);
       for (var key in events) {
         var method = this[events[key]];
         if (!method) throw new Error('Event "' + events[key] + '" does not exist');
@@ -976,11 +967,6 @@
           $(this.el).delegate(selector, eventName, method);
         }
       }
-    },
-
-    // Clears all callbacks previously bound to the view with `delegateEvents`.
-    undelegateEvents: function() {
-      $(this.el).unbind('.delegateEvents' + this.cid);
     },
 
     // Performs the initial configuration of a View with a set of options.
@@ -998,7 +984,7 @@
     // Ensure that the View has a DOM element to render into.
     // If `this.el` is a string, pass it through `$()`, take the first
     // matching element, and re-assign it to `el`. Otherwise, create
-    // an element from the `id`, `className` and `tagName` properties.
+    // an element from the `id`, `className` and `tagName` proeprties.
     _ensureElement : function() {
       if (!this.el) {
         var attrs = this.attributes || {};
@@ -1036,7 +1022,7 @@
 
   // Override this function to change the manner in which Backbone persists
   // models to the server. You will be passed the type of request, and the
-  // model in question. By default, makes a RESTful Ajax request
+  // model in question. By default, uses makes a RESTful Ajax request
   // to the model's `url()`. Some possible customizations could be:
   //
   // * Use `setTimeout` to batch rapid-fire updates into a single request.
@@ -1053,15 +1039,18 @@
     var type = methodMap[method];
 
     // Default JSON-request options.
-    var params = {type : type, dataType : 'json'};
+    var params = _.extend({
+      type:         type,
+      dataType:     'json'
+    }, options);
 
     // Ensure that we have a URL.
-    if (!options.url) {
+    if (!params.url) {
       params.url = getUrl(model) || urlError();
     }
 
     // Ensure that we have the appropriate request data.
-    if (!options.data && model && (method == 'create' || method == 'update')) {
+    if (!params.data && model && (method == 'create' || method == 'update')) {
       params.contentType = 'application/json';
       params.data = JSON.stringify(model.toJSON());
     }
@@ -1069,7 +1058,7 @@
     // For older servers, emulate JSON by encoding the request into an HTML-form.
     if (Backbone.emulateJSON) {
       params.contentType = 'application/x-www-form-urlencoded';
-      params.data = params.data ? {model : params.data} : {};
+      params.data        = params.data ? {model : params.data} : {};
     }
 
     // For older servers, emulate HTTP by mimicking the HTTP method with `_method`
@@ -1089,8 +1078,8 @@
       params.processData = false;
     }
 
-    // Make the request, allowing the user to override any Ajax options.
-    return $.ajax(_.extend(params, options));
+    // Make the request.
+    return $.ajax(params);
   };
 
   // Helpers
@@ -1152,8 +1141,7 @@
 
   // Wrap an optional error callback with a fallback error event.
   var wrapError = function(onError, model, options) {
-    return function(model, resp) {
-      var resp = model === model ? resp : model;
+    return function(resp) {
       if (onError) {
         onError(model, resp, options);
       } else {
@@ -1167,53 +1155,4 @@
     return string.replace(/&(?!\w+;|#\d+;|#x[\da-f]+;)/gi, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;').replace(/'/g, '&#x27;').replace(/\//g,'&#x2F;');
   };
 
-})}).call(this, this, typeof define === 'function' && define.amd ? define : function (id, factory) {
-
-  if (typeof exports !== 'undefined') {
-    // CommonJS has require and exports, use them and execute
-    // the factory function immediately. Provide a wrapper
-    // for require to deal with jQuery.
-    factory(function(id) {
-      // jQuery most likely cannot be loaded
-      // in a CommonJS environment, unless the developer
-      // also uses a browser shim like jsdom. Allow
-      // for that possibility, but do not blow
-      // up if it does not work. Use of a
-      // try/catch has precedent in Node modules
-      // for this kind of situation.
-      try {
-        return require(id);
-      } catch (e) {
-        // Do not bother returning a value, just absorb
-        // the error, the caller will receive undefined
-        // for the value.
-      }
-    }, exports);
-  } else {
-    // Plain browser. Grab the global.
-    var root = this;
-
-    // Create an object to hold the exported properties for Backbone.
-    // Do not use "exports" for the variable name, since var hoisting
-    // means it will shadow CommonJS exports in that environmetn.
-    var exportValue = {};
-
-    // Create a global for Backbone.
-    // Call the factory function to attach the Backbone
-    // properties to the exports value.
-    factory(function(id) {
-      if (id === 'jquery') {
-        // Support libraries that support the portions of
-        // the jQuery API used by Backbone.
-        return root.jQuery || root.Zepto || root.ender;
-      } else {
-        // Only other dependency is underscore.
-        return root._;
-      }
-    }, exportValue);
-
-    // Create the global only after running the factory,
-    // so that the previousBackbone for noConflict is found correctly.
-    root.Backbone = exportValue;
-  }
-});
+}).call(this);

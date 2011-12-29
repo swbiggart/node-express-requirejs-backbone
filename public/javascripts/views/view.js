@@ -6,7 +6,7 @@ define([
     'text!templates/main.html'], 
 function($, Backbone, _, model, template){
   var View = Backbone.View.extend({
-    el: '#main',
+    el: 'body',
     initialize: function(){
       this.model = new model({
         message: 'Hello World'

@@ -1,10 +1,10 @@
 ({
   appDir: "../",
-  baseUrl: "js/",
-  dir: "../../requirejsbackbone-build/",
+  baseUrl: "javascripts",
+  dir: "../../app-build/",
   //Comment out the optimize line if you want
   //the code minified by UglifyJS
-  //optimize: "none",
+  optimize: "none",
 
   paths: {
     "jquery": "require-jquery",
