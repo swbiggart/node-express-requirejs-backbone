@@ -1,8 +1,8 @@
 ## RequireJS and BackboneJS Starter
-This application is a starting point to design a modular application using RequireJS, and BackboneJS.  
-
-The build.bat file in the js directory also has scripts to run to build the application with either NodeJS, or Java.  
+This application is a starting point to design a modular application using Node, Express, RequireJS, and BackboneJS.  
 
 There are simple examples of how to write a router, view, and model.  
 
 Feel free to fork and use in your own BackboneJS app!
+
+Thanks to jcreamer898 for the RequireJS and Backbone starter.
