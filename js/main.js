@@ -1,15 +1,15 @@
 require.config({ 
     'paths': { 
-		"underscore": "libs/underscore", 
-		"backbone": "libs/backbone"
-	}
+    "underscore": "libs/underscore", 
+    "backbone": "libs/backbone"
+  }
 }); 
 
 require([
-	'order!libs/underscore',
-	'order!libs/backbone',
-	'order!app'
-	], 
-	function(_,Backbone,app){
-		app.init();
+  'order!libs/underscore',
+  'order!libs/backbone',
+  'order!app'
+  ], 
+  function(_,Backbone,app){
+    app.init();
 });
