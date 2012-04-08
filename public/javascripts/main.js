@@ -1,5 +1,5 @@
-require.config({ 
-    'paths': { 
+require.config({
+  'paths': { 
     "underscore": "libs/underscore", 
     "backbone": "libs/backbone"
   }
